@@ -1,0 +1,40 @@
+# Python / general
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# VSCode
+.vscode/
+
+# JetBrains
+.idea/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# logs
+*.log
+
+# Build outputs
+build/
+dist/
+*.egg-info/
+
+# Local env files (secrets)
+.env
+.env.*.local
+
+*.parquet
+*.csv
