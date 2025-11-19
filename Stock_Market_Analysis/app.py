@@ -80,7 +80,7 @@ if "ticker" not in cleaned.columns:
 
 available_tickers = sorted(cleaned["ticker"].dropna().unique())
 default_selection = available_tickers[:5] if len(available_tickers) >= 5 else available_tickers
-tickers = st.sidebar.multiselect("Select Ticker(s)", options=available_tickers, default=default_selection)
+tickers = st.sidebar.multiselect("Select ticker(s)", options=available_tickers, default=default_selection)
 
 # -------------------------------------------------------
 # Merge helper
