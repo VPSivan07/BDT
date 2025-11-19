@@ -12,7 +12,7 @@ st.markdown("<h1 style='text-align:center;'>📊 Stock Market Analysis</h1>", un
 # -------------------------------------------------------
 # GitHub raw base URL (owner/repo/main)
 # -------------------------------------------------------
-BASE_RAW = "https://raw.githubusercontent.com/VPSivan07/BDT/Stock_Market_Analysis"
+BASE_RAW = "https://raw.githubusercontent.com/VPSivan07/BDT/Stock_Market_Analysis/"
 
 # -------------------------------------------------------
 # Load data from GitHub (parquet files in repo root)
