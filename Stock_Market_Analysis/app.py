@@ -18,7 +18,7 @@ BASE_RAW = "https://raw.githubusercontent.com/VPSivan07/BDT/main/Stock_Market_An
 # Load data from GitHub (parquet files in repo root)
 # -------------------------------------------------------
 @st.cache_data
-def load_data_from_github(base_url: str = "https://raw.githubusercontent.com/VPSivan07/BDT/main/Stock_Market_Analysis/aggregations"):
+def load_data_from_github(base_url: str = BASE_RAW ):
     """
     Loads all required parquet files from GitHub raw URLs.
     Raises RuntimeError with a helpful message if loading fails.
