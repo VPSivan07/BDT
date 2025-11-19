@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from urllib.error import URLError
 
 # -------------------------------------------------------
 # Config
@@ -10,146 +9,132 @@ st.set_page_config(page_title="Stock Market Analysis", layout="wide")
 st.markdown("<h1 style='text-align:center;'>📊 Stock Market Analysis</h1>", unsafe_allow_html=True)
 
 # -------------------------------------------------------
-# GitHub raw base URL (replace BRANCH with your actual branch name)
+# GitHub raw base URL
+# Replace 'BRANCH' with your branch name (main/master)
 # -------------------------------------------------------
 BASE_RAW = "https://raw.githubusercontent.com/VPSivan07/BDT/main/Stock_Market_Analysis/"
 
 # -------------------------------------------------------
-# Load data from GitHub (parquet files)
+# Load data
 # -------------------------------------------------------
 @st.cache_data
-def load_data_from_github(base_url: str = BASE_RAW):
-    filenames = {
-        "cleaned": "cleaned.parquet",
-        "agg_daily": "agg_daily.parquet",
-        "agg_weekly": "agg_weekly.parquet",
-        "agg_ticker": "agg_ticker.parquet",
-        "agg_sector": "agg_sector.parquet",
-        "agg_exchange": "agg_exchange.parquet",
-        "agg_notes": "agg_notes.parquet",
-    }
-
+def load_parquets(base_url=BASE_RAW):
+    files = ["cleaned", "agg_daily", "agg_weekly", "agg_ticker", 
+             "agg_sector", "agg_exchange", "agg_notes"]
     loaded = {}
-    for key, fname in filenames.items():
-        url = base_url + fname
+    for f in files:
+        url = f"{base_url}{f}.parquet"
         try:
-            loaded[key] = pd.read_parquet(url)
+            df = pd.read_parquet(url)
+            loaded[f] = df
         except Exception as e:
-            st.warning(f"Failed to load '{fname}' from GitHub at\n{url}\nError: {e}")
-            loaded[key] = pd.DataFrame()  # empty DataFrame if load fails
-    return (
-        loaded["cleaned"],
-        loaded["agg_daily"],
-        loaded["agg_weekly"],
-        loaded["agg_ticker"],
-        loaded["agg_sector"],
-        loaded["agg_exchange"],
-        loaded["agg_notes"],
-    )
+            st.warning(f"Could not load {f}.parquet: {e}")
+            loaded[f] = pd.DataFrame()
+    return loaded
 
-try:
-    cleaned, agg_daily, agg_weekly, agg_ticker, agg_sector, agg_exchange, agg_notes = load_data_from_github()
-except Exception as err:
-    st.error("Failed to load parquet files.")
-    st.stop()
+data = load_parquets()
+cleaned = data["cleaned"]
+agg_daily = data["agg_daily"]
+agg_weekly = data["agg_weekly"]
+agg_ticker = data["agg_ticker"]
+agg_sector = data["agg_sector"]
+agg_exchange = data["agg_exchange"]
+agg_notes = data["agg_notes"]
 
 # -------------------------------------------------------
 # Normalize columns
 # -------------------------------------------------------
-# lowercase and strip spaces for safety
-def normalize_cols(df):
+def normalize_df(df):
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
     return df
 
-cleaned = normalize_cols(cleaned)
-agg_daily = normalize_cols(agg_daily)
-agg_weekly = normalize_cols(agg_weekly)
-agg_ticker = normalize_cols(agg_ticker)
-agg_sector = normalize_cols(agg_sector)
-agg_exchange = normalize_cols(agg_exchange)
-agg_notes = normalize_cols(agg_notes)
+for df in [cleaned, agg_daily, agg_weekly, agg_ticker, agg_sector, agg_exchange, agg_notes]:
+    df = normalize_df(df)
 
-# Ensure date columns
+# -------------------------------------------------------
+# Normalize tickers
+# -------------------------------------------------------
+for df in [cleaned, agg_daily, agg_weekly, agg_ticker]:
+    if "ticker" in df.columns:
+        df["ticker"] = df["ticker"].astype(str).str.strip().str.upper()
+
+# -------------------------------------------------------
+# Normalize date columns
+# -------------------------------------------------------
 if "trade_date" in cleaned.columns:
-    cleaned["trade_date"] = pd.to_datetime(cleaned["trade_date"], errors="coerce")
-
+    cleaned["trade_date"] = pd.to_datetime(cleaned["trade_date"], errors="coerce").dt.date
+if "trade_date" in agg_daily.columns:
+    agg_daily["trade_date"] = pd.to_datetime(agg_daily["trade_date"], errors="coerce").dt.date
 if "week" not in cleaned.columns and "trade_date" in cleaned.columns:
-    cleaned["week"] = cleaned["trade_date"].dt.to_period("W").apply(lambda r: r.start_time)
-
+    cleaned["week"] = pd.to_datetime(cleaned["trade_date"]).dt.to_period("W").apply(lambda r: r.start_time)
 if "week" in agg_weekly.columns:
     agg_weekly["week"] = pd.to_datetime(agg_weekly["week"], errors="coerce")
 
-if "trade_date" in agg_daily.columns:
-    agg_daily["trade_date"] = pd.to_datetime(agg_daily["trade_date"], errors="coerce")
-
 # -------------------------------------------------------
-# Sidebar Filters
+# Sidebar: Ticker filter
 # -------------------------------------------------------
 st.sidebar.header("Filters")
 if "ticker" not in cleaned.columns:
-    st.error("`cleaned.parquet` must contain a 'ticker' column.")
+    st.error("`cleaned.parquet` must contain 'ticker' column")
     st.stop()
 
-available_tickers = sorted(cleaned["ticker"].dropna().unique().astype(str).tolist())
+available_tickers = sorted(cleaned["ticker"].dropna().unique())
 default_selection = available_tickers[:5] if len(available_tickers) >= 5 else available_tickers
 tickers = st.sidebar.multiselect("Select Ticker(s)", options=available_tickers, default=default_selection)
 
 # -------------------------------------------------------
 # Merge helper
 # -------------------------------------------------------
-def merge_agg_with_cleaned_on_date(agg_df, date_col="trade_date"):
+def merge_on_date(agg_df, date_col):
     if date_col not in agg_df.columns:
-        st.warning(f"{date_col} not found in aggregate DataFrame.")
         return pd.DataFrame()
     if "ticker" not in cleaned.columns:
-        st.warning("'ticker' column missing in cleaned.parquet")
         return pd.DataFrame()
-    date_ticker = cleaned[[date_col, "ticker"]].dropna().drop_duplicates()
-    merged = agg_df.merge(date_ticker, on=date_col, how="left")
+    mapping = cleaned[[date_col, "ticker"]].dropna().drop_duplicates()
+    merged = agg_df.merge(mapping, on=date_col, how="left")
+    # normalize ticker
+    if "ticker" in merged.columns:
+        merged["ticker"] = merged["ticker"].astype(str).str.strip().str.upper()
     return merged
 
 # -------------------------------------------------------
 # Filtered DataFrames
 # -------------------------------------------------------
 # Daily
-if "trade_date" in agg_daily.columns:
-    daily_merged = merge_agg_with_cleaned_on_date(agg_daily, "trade_date")
-    if "ticker" in daily_merged.columns:
-        agg_daily_f = daily_merged[daily_merged["ticker"].isin(tickers)].copy()
-    else:
-        agg_daily_f = pd.DataFrame()
-else:
-    agg_daily_f = pd.DataFrame()
+agg_daily_f = merge_on_date(agg_daily, "trade_date")
+if not agg_daily_f.empty and tickers:
+    agg_daily_f = agg_daily_f[agg_daily_f["ticker"].isin(tickers)]
 
 # Weekly
-if "week" in agg_weekly.columns:
-    week_map = cleaned[["week", "ticker"]].dropna().drop_duplicates()
-    weekly_merged = agg_weekly.merge(week_map, on="week", how="left")
-    if "ticker" in weekly_merged.columns:
-        agg_weekly_f = weekly_merged[weekly_merged["ticker"].isin(tickers)].copy()
-    else:
-        agg_weekly_f = pd.DataFrame()
-else:
-    agg_weekly_f = pd.DataFrame()
+agg_weekly_f = merge_on_date(agg_weekly, "week")
+if not agg_weekly_f.empty and tickers:
+    agg_weekly_f = agg_weekly_f[agg_weekly_f["ticker"].isin(tickers)]
 
 # Ticker-level
-if "ticker" in agg_ticker.columns:
-    agg_ticker_f = agg_ticker[agg_ticker["ticker"].isin(tickers)] if tickers else agg_ticker.copy()
-else:
-    agg_ticker_f = pd.DataFrame()
+agg_ticker_f = agg_ticker.copy()
+if not agg_ticker_f.empty and tickers and "ticker" in agg_ticker_f.columns:
+    agg_ticker_f = agg_ticker_f[agg_ticker_f["ticker"].isin(tickers)]
 
-# Sector / Exchange / Notes
-selected_sectors = cleaned[cleaned["ticker"].isin(tickers)]["sector"].dropna().unique() if tickers else cleaned["sector"].dropna().unique()
-agg_sector_f = agg_sector[agg_sector["sector"].isin(selected_sectors)] if "sector" in agg_sector.columns else pd.DataFrame()
+# Sector
+agg_sector_f = pd.DataFrame()
+if "sector" in agg_sector.columns and "sector" in cleaned.columns:
+    selected_sectors = cleaned[cleaned["ticker"].isin(tickers)]["sector"].dropna().unique()
+    agg_sector_f = agg_sector[agg_sector["sector"].isin(selected_sectors)]
 
-selected_exchanges = cleaned[cleaned["ticker"].isin(tickers)]["exchange"].dropna().unique() if tickers else cleaned["exchange"].dropna().unique()
-agg_exchange_f = agg_exchange[agg_exchange["exchange"].isin(selected_exchanges)] if "exchange" in agg_exchange.columns else pd.DataFrame()
+# Exchange
+agg_exchange_f = pd.DataFrame()
+if "exchange" in agg_exchange.columns and "exchange" in cleaned.columns:
+    selected_exchanges = cleaned[cleaned["ticker"].isin(tickers)]["exchange"].dropna().unique()
+    agg_exchange_f = agg_exchange[agg_exchange["exchange"].isin(selected_exchanges)]
 
-selected_notes = cleaned[cleaned["ticker"].isin(tickers)]["notes"].dropna().unique() if tickers else cleaned["notes"].dropna().unique()
-agg_notes_f = agg_notes[agg_notes["notes"].isin(selected_notes)] if "notes" in agg_notes.columns else pd.DataFrame()
+# Notes
+agg_notes_f = pd.DataFrame()
+if "notes" in agg_notes.columns and "notes" in cleaned.columns:
+    selected_notes = cleaned[cleaned["ticker"].isin(tickers)]["notes"].dropna().unique()
+    agg_notes_f = agg_notes[agg_notes["notes"].isin(selected_notes)]
 
 # -------------------------------------------------------
-# Tabs (keep your existing tab code as-is)
+# Tabs code
 # -------------------------------------------------------
 tabs = st.tabs([
     "Daily Aggregations",
@@ -160,8 +145,47 @@ tabs = st.tabs([
     "Notes Aggregations"
 ])
 
-# The rest of your tab code can remain exactly the same as before,
-# since agg_daily_f, agg_weekly_f, etc., are now safely created.
+# --- Daily Tab ---
+with tabs[0]:
+    st.subheader("📅 Daily Aggregations")
+    if agg_daily_f.empty:
+        st.warning("No daily data available")
+    else:
+        value_cols = [c for c in ["avg_open_price", "avg_close_price"] if c in agg_daily_f.columns]
+        if value_cols:
+            chart = alt.Chart(agg_daily_f).transform_fold(
+                value_cols, as_=["Metric", "Value"]
+            ).mark_line(point=True).encode(
+                x=alt.X("trade_date:T", title="Trade Date"),
+                y=alt.Y("Value:Q", title="Price"),
+                color="Metric:N",
+                tooltip=["trade_date"] + value_cols
+            ).interactive()
+            st.altair_chart(chart, use_container_width=True)
+        st.dataframe(agg_daily_f.head(200))
+
+# --- Weekly Tab ---
+with tabs[1]:
+    st.subheader("📊 Weekly Aggregations")
+    if agg_weekly_f.empty:
+        st.warning("No weekly data available")
+    else:
+        value_cols = [c for c in ["avg_close_price", "avg_volume"] if c in agg_weekly_f.columns]
+        if value_cols:
+            chart = alt.Chart(agg_weekly_f).transform_fold(
+                value_cols, as_=["Metric", "Value"]
+            ).mark_line(point=True).encode(
+                x=alt.X("week:T", title="Week Start"),
+                y=alt.Y("Value:Q", title="Value"),
+                color="Metric:N",
+                tooltip=["week"] + value_cols
+            ).interactive()
+            st.altair_chart(chart, use_container_width=True)
+        st.dataframe(agg_weekly_f.head(200))
+
+# --- Other tabs remain the same ---
+# You can copy your previous code for ticker/sector/exchange/notes tabs
+# just replace agg_* with agg_*_f
 
 # -------------------------------------------------------
 # Footer
@@ -175,5 +199,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 st.success("✅ Dashboard loaded successfully!")
