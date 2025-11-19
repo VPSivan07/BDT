@@ -10,7 +10,6 @@ st.markdown("<h1 style='text-align:center;'>📊 Stock Market Analysis</h1>", un
 
 # -------------------------------------------------------
 # GitHub raw base URL
-# Replace 'BRANCH' with your branch name (main/master)
 # -------------------------------------------------------
 BASE_RAW = "https://raw.githubusercontent.com/VPSivan07/BDT/main/Stock_Market_Analysis/"
 
@@ -19,7 +18,7 @@ BASE_RAW = "https://raw.githubusercontent.com/VPSivan07/BDT/main/Stock_Market_An
 # -------------------------------------------------------
 @st.cache_data
 def load_parquets(base_url=BASE_RAW):
-    files = ["cleaned", "agg_daily", "agg_weekly", "agg_ticker", 
+    files = ["cleaned", "agg_daily", "agg_weekly", "agg_ticker",
              "agg_sector", "agg_exchange", "agg_notes"]
     loaded = {}
     for f in files:
@@ -48,15 +47,29 @@ def normalize_df(df):
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
     return df
 
-for df in [cleaned, agg_daily, agg_weekly, agg_ticker, agg_sector, agg_exchange, agg_notes]:
-    df = normalize_df(df)
+# Assign back normalized DataFrames
+cleaned = normalize_df(cleaned)
+agg_daily = normalize_df(agg_daily)
+agg_weekly = normalize_df(agg_weekly)
+agg_ticker = normalize_df(agg_ticker)
+agg_sector = normalize_df(agg_sector)
+agg_exchange = normalize_df(agg_exchange)
+agg_notes = normalize_df(agg_notes)
+
+# -------------------------------------------------------
+# Ensure 'ticker' exists in all relevant DataFrames
+# -------------------------------------------------------
+for df_name in ["cleaned", "agg_daily", "agg_weekly", "agg_ticker"]:
+    df = locals()[df_name]
+    if "ticker" not in df.columns:
+        df["ticker"] = None
+    locals()[df_name] = df
 
 # -------------------------------------------------------
 # Normalize tickers
 # -------------------------------------------------------
 for df in [cleaned, agg_daily, agg_weekly, agg_ticker]:
-    if "ticker" in df.columns:
-        df["ticker"] = df["ticker"].astype(str).str.strip().str.upper()
+    df["ticker"] = df["ticker"].astype(str).str.strip().str.upper()
 
 # -------------------------------------------------------
 # Normalize date columns
@@ -102,12 +115,12 @@ def merge_on_date(agg_df, date_col):
 # -------------------------------------------------------
 # Daily
 agg_daily_f = merge_on_date(agg_daily, "trade_date")
-if not agg_daily_f.empty and tickers:
+if not agg_daily_f.empty and tickers and "ticker" in agg_daily_f.columns:
     agg_daily_f = agg_daily_f[agg_daily_f["ticker"].isin(tickers)]
 
 # Weekly
 agg_weekly_f = merge_on_date(agg_weekly, "week")
-if not agg_weekly_f.empty and tickers:
+if not agg_weekly_f.empty and tickers and "ticker" in agg_weekly_f.columns:
     agg_weekly_f = agg_weekly_f[agg_weekly_f["ticker"].isin(tickers)]
 
 # Ticker-level
@@ -182,10 +195,6 @@ with tabs[1]:
             ).interactive()
             st.altair_chart(chart, use_container_width=True)
         st.dataframe(agg_weekly_f.head(200))
-
-# --- Other tabs remain the same ---
-# You can copy your previous code for ticker/sector/exchange/notes tabs
-# just replace agg_* with agg_*_f
 
 # -------------------------------------------------------
 # Footer
