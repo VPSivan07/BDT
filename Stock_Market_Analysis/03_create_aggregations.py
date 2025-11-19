@@ -1,33 +1,24 @@
-# 03_create_aggregations_fixed.py
+# 03_create_aggregations_fixed_v2.py
 import pandas as pd
 from pathlib import Path
 
+# Use current folder (Stock_Market_Analysis)
 CLEANED = Path("cleaned.parquet")
-OUT_DIR = Path("aggregations")
-OUT_DIR.mkdir(exist_ok=True)
 
-def create_aggregations(cleaned_path=CLEANED, out_dir=OUT_DIR):
+def create_aggregations(cleaned_path=CLEANED):
     df = pd.read_parquet(cleaned_path)
 
     # -----------------------------
     # Standardize column names
     # -----------------------------
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+
     # Ensure required columns exist
-    col_renames = {
-        "ticker": "ticker",
-        "trade_date": "trade_date",
-        "open_price": "open_price",
-        "close_price": "close_price",
-        "volume": "volume",
-        "sector": "sector",
-        "notes": "notes",
-        "validated": "validated",
-        "exchange": "exchange"
-    }
-    for orig, new in col_renames.items():
-        if orig not in df.columns:
-            df[orig] = None
+    required_cols = ["ticker", "trade_date", "open_price", "close_price", 
+                     "volume", "sector", "notes", "validated", "exchange"]
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = None
 
     # -----------------------------
     # Numeric conversions
@@ -39,14 +30,14 @@ def create_aggregations(cleaned_path=CLEANED, out_dir=OUT_DIR):
     # -----------------------------
     # Flags
     # -----------------------------
-    df["gap_up_flag"] = df.get("notes", "").astype(str).str.contains("gap up", case=False, na=False).astype(int)
-    df["gap_down_flag"] = df.get("notes", "").astype(str).str.contains("gap down", case=False, na=False).astype(int)
-    df["validated_flag"] = df.get("validated", "").astype(str).str.lower().isin(["yes", "y"]).astype(int)
+    df["gap_up_flag"] = df["notes"].astype(str).str.contains("gap up", case=False, na=False).astype(int)
+    df["gap_down_flag"] = df["notes"].astype(str).str.contains("gap down", case=False, na=False).astype(int)
+    df["validated_flag"] = df["validated"].astype(str).str.lower().isin(["yes", "y"]).astype(int)
 
     # -----------------------------
-    # Exchange -> country
+    # Exchange -> country mapping
     # -----------------------------
-    df["exchange_clean"] = df.get("exchange", "").astype(str).str.strip().str.lower()
+    df["exchange_clean"] = df["exchange"].astype(str).str.strip().str.lower()
     df["country"] = df["exchange_clean"].map({
         "nasdaq": "USA",
         "nyse": "USA",
@@ -74,8 +65,8 @@ def create_aggregations(cleaned_path=CLEANED, out_dir=OUT_DIR):
             missing_open=("open_price", lambda x: x.isna().sum()),
             missing_close=("close_price", lambda x: x.isna().sum())
         )
-        daily.to_parquet(out_dir / "agg_daily.parquet", index=False)
-        print("Saved", out_dir / "agg_daily.parquet")
+        daily.to_parquet("agg_daily.parquet", index=False)
+        print("Saved agg_daily.parquet")
     else:
         print("Skipping daily aggregation (missing trade_date or ticker)")
 
@@ -90,8 +81,8 @@ def create_aggregations(cleaned_path=CLEANED, out_dir=OUT_DIR):
             avg_volume=("volume", "mean"),
             avg_volatility=("volatility", "mean")
         )
-        weekly.to_parquet(out_dir / "agg_weekly.parquet", index=False)
-        print("Saved", out_dir / "agg_weekly.parquet")
+        weekly.to_parquet("agg_weekly.parquet", index=False)
+        print("Saved agg_weekly.parquet")
     else:
         print("Skipping weekly aggregation (missing trade_date or ticker)")
 
@@ -108,8 +99,8 @@ def create_aggregations(cleaned_path=CLEANED, out_dir=OUT_DIR):
             gap_up_count=("gap_up_flag", "sum"),
             gap_down_count=("gap_down_flag", "sum")
         )
-        ticker_agg.to_parquet(out_dir / "agg_ticker.parquet", index=False)
-        print("Saved", out_dir / "agg_ticker.parquet")
+        ticker_agg.to_parquet("agg_ticker.parquet", index=False)
+        print("Saved agg_ticker.parquet")
 
     # -----------------------------
     # 4) Sector aggregation
@@ -121,8 +112,8 @@ def create_aggregations(cleaned_path=CLEANED, out_dir=OUT_DIR):
             total_gap_up=("gap_up_flag", "sum"),
             total_gap_down=("gap_down_flag", "sum")
         )
-        sector_agg.to_parquet(out_dir / "agg_sector.parquet", index=False)
-        print("Saved", out_dir / "agg_sector.parquet")
+        sector_agg.to_parquet("agg_sector.parquet", index=False)
+        print("Saved agg_sector.parquet")
 
     # -----------------------------
     # 5) Exchange aggregation
@@ -133,8 +124,8 @@ def create_aggregations(cleaned_path=CLEANED, out_dir=OUT_DIR):
             avg_close=("close_price", "mean"),
             total_volume=("volume", "sum")
         )
-        exchange_agg.to_parquet(out_dir / "agg_exchange.parquet", index=False)
-        print("Saved", out_dir / "agg_exchange.parquet")
+        exchange_agg.to_parquet("agg_exchange.parquet", index=False)
+        print("Saved agg_exchange.parquet")
 
     # -----------------------------
     # 6) Notes aggregation
@@ -145,8 +136,9 @@ def create_aggregations(cleaned_path=CLEANED, out_dir=OUT_DIR):
             avg_price_change=("price_change", "mean"),
             avg_volume=("volume", "mean")
         )
-        notes_agg.to_parquet(out_dir / "agg_notes.parquet", index=False)
-        print("Saved", out_dir / "agg_notes.parquet")
+        notes_agg.to_parquet("agg_notes.parquet", index=False)
+        print("Saved agg_notes.parquet")
+
 
 if __name__ == "__main__":
     create_aggregations()
